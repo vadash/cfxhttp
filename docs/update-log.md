@@ -1,10 +1,12 @@
 ### 发布记录 update log
 
 #### v1.0.6 (not release yet)
- * 传输完成后关闭 ws 链接
- * 用 for 循环取代 stream.pipeTo()
- * close ws server properly
- * replace stream.pipeTo() with for loop
+ * 把 BUFFER_SIZE 设置为 `0` 可以禁用缓存功能
+ * 添加关闭 ws 和远程链接的善后代码
+ * 添加一个 yield 中继器（实验功能）
+ * buffering feature can be disabled by setting `BUFFER_SIZE` to `0`
+ * add code for closing ws server and remote connection
+ * add an "yield" relay (experimental)
 
 #### v1.0.5 (2025-01-12)
  * 添加上传、下载缓存大小设置项

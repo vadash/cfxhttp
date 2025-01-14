@@ -19,7 +19,11 @@ const SETTINGS = {
 
     ['BUFFER_SIZE']: '32', // Upload/Download buffer size in KiB, set to '0' to disable buffering.
 
-    ['YIELD_STEPS']: '300', // A magic number. Testing.
+    // Experimental features.
+    // Please read the source code before changing the following settings.
+    ['RELAY_SCHEDULER']: 'pipe', // pipe, yield
+    ['YIELD_SIZE']: '2048', // KiB
+    ['YIELD_DELAY']: '0', // ms
 }
 
 // source code
@@ -245,10 +249,28 @@ async function read_vless_header(reader, cfg_uuid_str) {
     }
 }
 
-function relay(log, steps, client, remote, vless) {
-    // log.debug(`current yield steps: ${steps}`)
+function watch_abort_signal(log, signal, remote) {
+    if (!signal || !remote) {
+        return
+    }
 
-    const signal = client.signal
+    setTimeout(() => {
+        if (!signal.aborted) {
+            watch_abort_signal(log, signal, remote)
+            return
+        }
+        setTimeout(() => {
+            log.debug(`kill remote connection`)
+            remote
+                .close()
+                .catch((err) => log.error(`kill remote error: ${err}`))
+        }, 3000)
+    }, 3000)
+}
+
+function yield_relay(cfg, log, client, remote, vless) {
+    const yield_size = parseInt(cfg.YIELD_SIZE) * 1024
+    const delay = parseInt(cfg.YIELD_DELAY)
 
     async function write(w, d) {
         if (d && d.byteLength > 0) {
@@ -256,19 +278,18 @@ function relay(log, steps, client, remote, vless) {
         }
     }
 
-    function close_writer(w) {
-        w.close().catch((err) => log.error(`close writer error: ${err}`))
-    }
-
     async function pipe(resolve, reject, reader, writer) {
         try {
-            for (let c = 0; c < steps; c++) {
-                if (signal.aborted) {
-                    resolve() // reject() would print error message
-                    return
+            let c = 0
+            while (c < yield_size) {
+                if (client.signal && client.signal.aborted) {
+                    throw new AbortError('receive abort signal')
                 }
                 const r = await reader.read()
-                await write(writer, r.value)
+                if (r.value) {
+                    c += r.value.byteLength
+                    await writer.write(r.value)
+                }
                 if (r.done) {
                     resolve()
                     return
@@ -276,46 +297,44 @@ function relay(log, steps, client, remote, vless) {
             }
 
             // log.debug(`yield`)
-            setTimeout(() => pipe(resolve, reject, reader, writer), 0)
+            setTimeout(() => pipe(resolve, reject, reader, writer), delay)
             return
         } catch (err) {
             reject(err)
         }
     }
 
-    function pump(src, dest, first_packet, writer_closer) {
+    function pump(src, dest, first_packet) {
         const reader = src.readable.getReader()
         const writer = dest.writable.getWriter()
-        return new Promise((resolve, reject) => {
-            function on_closing() {
-                writer_closer && writer_closer(writer)
-                src.reading_done && src.reading_done()
-            }
-
-            function inner_resolve() {
-                on_closing()
-                resolve()
-            }
-
-            function inner_reject(err) {
-                on_closing()
-                reject(err)
-            }
-
+        const p = new Promise((resolve, reject) =>
             write(writer, first_packet)
-                .catch(inner_reject)
-                .then(() => pipe(inner_resolve, inner_reject, reader, writer))
+                .catch(reject)
+                .then(() => pipe(resolve, reject, reader, writer)),
+        )
+        p.finally(() => {
+            reader.releaseLock()
+            writer.releaseLock()
         })
+        return p
     }
 
-    log.debug(`relay starts`)
-    const uploader = pump(client, remote, vless.data).catch((err) =>
-        log.error(`upload error: ${err.message}`),
+    const uploader = pump(client, remote, vless.data).finally(
+        () => client.reading_done && client.reading_done(),
     )
-    const downloader = pump(remote, client, vless.resp, close_writer).catch(
-        (err) => log.error(`download error: ${err.message}`),
+
+    const downloader = pump(remote, client, vless.resp).finally(() =>
+        client.writable
+            .close()
+            .catch((err) => log.error(`close writer error: ${err.message}`)),
     )
-    downloader.finally(() => uploader).finally(() => log.info(`relay finished`))
+
+    watch_abort_signal(log, client.signal, remote)
+
+    return {
+        uploader,
+        downloader,
+    }
 }
 
 function pick_random_proxy(cfg_proxy) {
@@ -402,11 +421,7 @@ function create_xhttp_client(cfg, buff_size, client_readable) {
     const buff_stream = new TransformStream(
         {
             transform(chunk, controller) {
-                try {
-                    controller.enqueue(chunk)
-                } catch {
-                    abort_ctrl.abort()
-                }
+                controller.enqueue(chunk)
             },
         },
         create_queuing_strategy(buff_size),
@@ -430,7 +445,6 @@ function create_xhttp_client(cfg, buff_size, client_readable) {
     return {
         readable: client_readable,
         writable: buff_stream.writable,
-        signal: abort_ctrl.signal,
         resp,
     }
 }
@@ -536,6 +550,33 @@ function create_ws_client(log, buff_size, ws_client, ws_server) {
     }
 }
 
+function pipe_relay(cfg, log, client, remote, vless) {
+    async function pump(src, dest, first_packet) {
+        if (first_packet.length > 0) {
+            const writer = dest.writable.getWriter()
+            await writer.write(first_packet)
+            writer.releaseLock()
+        }
+        const opt = src.signal ? { signal: src.signal } : null
+        await src.readable.pipeTo(dest.writable, opt)
+    }
+
+    const uploader = pump(client, remote, vless.data).finally(
+        () => client.reading_done && client.reading_done(),
+    )
+
+    // pipeTo() will close writable
+    const downloader = pump(remote, client, vless.resp).catch(() =>
+        client.writable
+            .close()
+            .catch((err) => log.error(`close writer error: ${err.message}`)),
+    )
+
+    watch_abort_signal(log, client.signal, remote)
+
+    return { uploader, downloader }
+}
+
 async function handle_client(cfg, log, client) {
     try {
         const vless = await parse_header(cfg.UUID, client)
@@ -546,8 +587,25 @@ async function handle_client(cfg, log, client) {
             cfg.PROXY,
         )
 
-        const steps = parseInt(cfg.YIELD_STEPS)
-        relay(log, steps, client, remote, vless)
+        const relays = {
+            ['pipe']: pipe_relay,
+            ['yield']: yield_relay,
+        }
+
+        const relay = relays[cfg.RELAY_SCHEDULER] || pipe_relay
+
+        function log_error(tag, err) {
+            if (!(err instanceof AbortError)) {
+                log.error(`${tag} error: ${err.message}`)
+            }
+        }
+
+        const { uploader, downloader } = relay(cfg, log, client, remote, vless)
+        uploader.catch((err) => log_error('upload', err))
+        downloader
+            .catch((err) => log_error('download', err))
+            .finally(() => uploader)
+            .finally(() => log.info(`connection closed`))
         return true
     } catch (err) {
         log.error(`handle client error: ${err.message}`)
@@ -785,9 +843,9 @@ Refresh this page to re-generate a random settings example.`
 async function main(request, env) {
     const cfg = load_settings(env, SETTINGS)
     const log = new Logger(cfg.LOG_LEVEL, cfg.TIME_ZONE)
+
     try {
-        const resp = await handle_request(cfg, log, request)
-        return resp
+        return await handle_request(cfg, log, request)
     } catch (err) {
         log.error(`unhandled error: ${err}`)
     }
@@ -802,7 +860,7 @@ async function handle_request(cfg, log, request) {
     }
 
     const path = url.pathname
-    const buff_size = parseInt(cfg.BUFFER_SIZE) * 1024
+    const buff_size = (parseInt(cfg.BUFFER_SIZE) || 0) * 1024
 
     if (
         cfg.WS_PATH &&
@@ -812,16 +870,15 @@ async function handle_request(cfg, log, request) {
         log.debug('accept ws client')
         const [ws_client, ws_server] = new WebSocketPair()
         const client = create_ws_client(log, buff_size, ws_client, ws_server)
-        setTimeout(() => {
-            try {
-                ws_server.accept()
-            } catch (err) {
-                log.error(`accept ws client error: ${err.message}`)
-                client.close && client.close()
-            }
+        try {
+            ws_server.accept()
             handle_client(cfg, log, client)
-        }, 0)
-        return client.resp
+            return client.resp
+        } catch (err) {
+            log.error(`accept ws client error: ${err.message}`)
+            client.close && client.close()
+        }
+        return BAD_REQUEST
     }
 
     if (
