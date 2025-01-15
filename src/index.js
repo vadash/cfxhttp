@@ -20,10 +20,26 @@ const SETTINGS = {
     ['BUFFER_SIZE']: '32', // Upload/Download buffer size in KiB, set to '0' to disable buffering.
 
     // Experimental features.
-    // Please read the source code before changing the following settings.
+
     ['RELAY_SCHEDULER']: 'pipe', // pipe, yield
     ['YIELD_SIZE']: '2048', // KiB
     ['YIELD_DELAY']: '0', // ms
+    /*
+A proxy is a relay between client and remote website. The pipe-relay uses the
+built-in stream.pipeTo() function to achieve that. The advantage is that it is
+efficient and fast. But js runtime is single threaded. In some case, when
+download and upload are performed simultaneously, one needs to wait for the
+other to complete first. The yield-relay is designed to solve this problem.
+Spoiler alert, yield-relay is very slow. It breaks down download/upload into
+smaller chunks and relay them alternately. The YIELD_SIZE is chunk size.
+But! There is still another problem. Workers are stateless, we have no way of
+knowing if there is another connection performing download or upload. So yield-relay
+adds an YIELD_DELAY after each chunk sent. That is a stupid solution. If you
+have a better idea, please let me know.
+
+One more thing. The maximum number of concurrent connections of workers is about 10.
+The yield-relay cannot solve high concurrent connections problem.
+    */
 }
 
 // source code
