@@ -10,7 +10,7 @@ This script is used to deploy vless proxy to Cloudflare workers or pages.
 
 If every thing goes right, you would see a `Hello world!` when accessing `https://your-project-name.pages.dev`.  
 Visit `https://your-project-name.pages.dev/(WS_PATH)/?fragment=true&uuid=(UUID)` to get a client `config.json` with WebSocket transport.  
-Set `fragemnt` to `false` to get a config without fragment settings.  
+Set `fragment` to `false` to get a config without fragment settings.  
 
 #### Deploy WebSocket proxy to workers
  1. Download `cfxhttp.zip` from [releases](https://github.com/vrnobody/cfxhttp/releases), and extract `_worker.js`
