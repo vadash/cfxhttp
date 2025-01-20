@@ -1,5 +1,9 @@
 ### 发布记录 update log
 
+#### v1.0.7 (2025-01-20)
+ * 删除 xhttp 协议相关说明，这个脚本已经不能在 workers 中部署
+ * remove xhttp transport, workers have banned this script
+
 #### v1.0.6 (2025-01-15)
  * 把 BUFFER_SIZE 设置为 `0` 可以禁用缓存功能
  * 添加关闭 ws 和远程链接的善后代码

@@ -7,9 +7,6 @@ const SETTINGS = {
     ['LOG_LEVEL']: 'none', // debug, info, error, none
     ['TIME_ZONE']: '0', // timestamp time zone of logs
 
-    ['XHTTP_PATH']: '', // URL path for xhttp transport, e.g. '/xhttp', empty means disabled
-    ['XPADDING_RANGE']: '100-1000', // Length range of X-Padding response header
-
     ['WS_PATH']: '', // URL path for ws transport, e.g. '/ws', empty means disabled
 
     ['DOH_QUERY_PATH']: '', // URL path for DNS over HTTP(S), e.g. '/doh-query', empty means disabled
@@ -17,7 +14,11 @@ const SETTINGS = {
 
     ['IP_QUERY_PATH']: '', // URL path for querying client IP information, empty means disabled
 
-    ['BUFFER_SIZE']: '32', // Upload/Download buffer size in KiB, set to '0' to disable buffering.
+    ['BUFFER_SIZE']: '128', // Upload/Download buffer size in KiB, set to '0' to disable buffering.
+
+    // 2025-01-20 workers have banned this script, xhttp will not work any more
+    ['XHTTP_PATH']: '', // URL path for xhttp transport, e.g. '/xhttp', empty means disabled
+    ['XPADDING_RANGE']: '100-1000', // Length range of X-Padding response header
 
     // Experimental features.
     ['RELAY_SCHEDULER']: 'pipe', // pipe, yield
@@ -920,7 +921,7 @@ async function handle_request(cfg, log, request) {
                 },
             })
         }
-        return new Response(`Hello world!`)
+        return new Response(`Hello World!`)
     }
 
     return BAD_REQUEST
