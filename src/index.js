@@ -16,7 +16,6 @@ const SETTINGS = {
 
     ['BUFFER_SIZE']: '128', // Upload/Download buffer size in KiB, set to '0' to disable buffering.
 
-    // 2025-01-20 workers have banned this script, xhttp will not work any more
     ['XHTTP_PATH']: '', // URL path for xhttp transport, e.g. '/xhttp', empty means disabled
     ['XPADDING_RANGE']: '100-1000', // Length range of X-Padding response header
 
