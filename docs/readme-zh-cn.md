@@ -1,4 +1,4 @@
-简体中文 | [English](./en.md)  
+简体中文 | [English](./readme-en.md)  
 
 在 Cloudflare workers 或者 pages 中部署 vless 协议的代理服务器。  
 

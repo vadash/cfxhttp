@@ -1,12 +1,34 @@
-# proxies and hostnames are collected from these reposes
+#### obfuscate
+```bash
+npm install javascript-obfuscator
+
+node_modules/.bin/javascript-obfuscator ./src/index.js --output ./src/_worker.js \
+    --control-flow-flattening true \
+    --dead-code-injection true \
+    --rename-globals true \
+    --string-array-encoding 'rc4' \
+    --transform-object-keys true \
+    --unicode-escape-sequence true
+```
+
+#### update all npm packages
+```bash
+npm update --save
+```
+
+#### resource repos
+```bash
+# proxies and hostnames are collected from these repos:
 https://github.com/6Kmfi6HP/EDtunnel
 https://github.com/armanibash2/Vless-Cloudflare-Pages-Free
 https://github.com/cmliu/edgetunnel
 https://github.com/HappyLeslieAlexander/Cloudflare_VLESS
 https://github.com/Misaka-blog/cf-wkrs-pages-vless
 https://github.com/yonggekkk/Cloudflare_vless_trojan
+```
 
-# Cloudflare reverse proxies
+#### Cloudflare reverse proxies
+```bash
 bestproxy.onecf.eu.org
 cdn-all.xn--b6gac.eu.org
 cdn-b100.xn--b6gac.eu.org
@@ -24,8 +46,10 @@ proxyip.oracle.fxxk.dedyn.io
 proxyip.sg.fxxk.dedyn.io
 ts.hpc.tw
 workers.cloudflare.cyou
+```
 
-# low latency hostnames
+#### low latency hostnames
+```bash
 115155.xyz
 8.889288.xyz
 africa.visa.com
@@ -69,18 +93,4 @@ www.visaeurope.at
 www.visaeurope.ch
 www.visasoutheasteurope.com
 www.whatismyip.com
-
-# update all npm packages
-pnpm update --save
-
-# install obfuscator
-npm install javascript-obfuscator
-
-# obfuscate
-node_modules/.bin/javascript-obfuscator ./src/index.js --output ./src/_worker.js \
-    --control-flow-flattening true \
-    --dead-code-injection true \
-    --rename-globals true \
-    --string-array-encoding 'rc4' \
-    --transform-object-keys true \
-    --unicode-escape-sequence true
+```

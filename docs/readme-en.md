@@ -1,4 +1,4 @@
-[简体中文](./zh-cn.md) | English  
+[简体中文](./readme-zh-cn.md) | English  
 
 Please help me improve this document.  
 
