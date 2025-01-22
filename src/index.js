@@ -283,7 +283,7 @@ function watch_abort_signal(log, signal, remote) {
     }, 3000)
 }
 
-function yield_relay(cfg, log, client, remote, vless) {
+function yield_relay(cfg, signal) {
     const yield_size = parseInt(cfg.YIELD_SIZE) * 1024
     const delay = parseInt(cfg.YIELD_DELAY)
 
@@ -293,11 +293,11 @@ function yield_relay(cfg, log, client, remote, vless) {
         }
     }
 
-    async function pipe(resolve, reject, reader, writer) {
+    async function copy(resolve, reject, reader, writer) {
         try {
             let c = 0
             while (c < yield_size) {
-                if (client.signal && client.signal.aborted) {
+                if (signal && signal.aborted) {
                     throw new AbortError('receive abort signal')
                 }
                 const r = await reader.read()
@@ -306,13 +306,14 @@ function yield_relay(cfg, log, client, remote, vless) {
                     await writer.write(r.value)
                 }
                 if (r.done) {
+                    await writer.close()
                     resolve()
                     return
                 }
             }
 
-            // log.debug(`yield`)
-            setTimeout(() => pipe(resolve, reject, reader, writer), delay)
+            // yield
+            setTimeout(() => copy(resolve, reject, reader, writer), delay)
             return
         } catch (err) {
             reject(err)
@@ -325,7 +326,7 @@ function yield_relay(cfg, log, client, remote, vless) {
         const p = new Promise((resolve, reject) =>
             write(writer, first_packet)
                 .catch(reject)
-                .then(() => pipe(resolve, reject, reader, writer)),
+                .then(() => copy(resolve, reject, reader, writer)),
         )
         p.finally(() => {
             reader.releaseLock()
@@ -334,22 +335,7 @@ function yield_relay(cfg, log, client, remote, vless) {
         return p
     }
 
-    const uploader = pump(client, remote, vless.data).finally(
-        () => client.reading_done && client.reading_done(),
-    )
-
-    const downloader = pump(remote, client, vless.resp).finally(() =>
-        client.writable
-            .close()
-            .catch((err) => log.error(`close writer error: ${err.message}`)),
-    )
-
-    watch_abort_signal(log, client.signal, remote)
-
-    return {
-        uploader,
-        downloader,
-    }
+    return pump
 }
 
 function pick_random_proxy(cfg_proxy) {
@@ -431,8 +417,6 @@ async function read_atleast(reader, n) {
 }
 
 function create_xhttp_client(cfg, buff_size, client_readable) {
-    const abort_ctrl = new AbortController()
-
     const buff_stream = new TransformStream(
         {
             transform(chunk, controller) {
@@ -565,7 +549,7 @@ function create_ws_client(log, buff_size, ws_client, ws_server) {
     }
 }
 
-function pipe_relay(cfg, log, client, remote, vless) {
+function pipe_relay() {
     async function pump(src, dest, first_packet) {
         if (first_packet.length > 0) {
             const writer = dest.writable.getWriter()
@@ -575,21 +559,42 @@ function pipe_relay(cfg, log, client, remote, vless) {
         const opt = src.signal ? { signal: src.signal } : null
         await src.readable.pipeTo(dest.writable, opt)
     }
+    return pump
+}
 
-    const uploader = pump(client, remote, vless.data).finally(
-        () => client.reading_done && client.reading_done(),
-    )
+function create_pump(cfg, signal) {
+    const relays = {
+        ['pipe']: pipe_relay,
+        ['yield']: yield_relay,
+    }
+    const creator = relays[cfg.RELAY_SCHEDULER] || pipe_relay
+    return creator(cfg, signal)
+}
+
+function relay(cfg, log, client, remote, vless) {
+    function log_error(prefix, err) {
+        if (!(err instanceof AbortError)) {
+            log.error(`${prefix} error: ${err.message}`)
+        }
+    }
+
+    const pump = create_pump(cfg, client.signal)
+
+    const uploader = pump(client, remote, vless.data)
+        .catch((err) => log_error('upload', err))
+        .finally(() => client.reading_done && client.reading_done())
 
     // pipeTo() will close writable
-    const downloader = pump(remote, client, vless.resp).catch(() =>
+    const downloader = pump(remote, client, vless.resp).catch((err) => {
+        log_error('download', err)
         client.writable
             .close()
-            .catch((err) => log.error(`close writer error: ${err.message}`)),
-    )
+            .catch((cerr) => log.error(`close writer error: ${cerr.message}`))
+    })
 
-    watch_abort_signal(log, client.signal, remote)
-
-    return { uploader, downloader }
+    downloader
+        .finally(() => uploader)
+        .finally(() => log.info(`connection closed`))
 }
 
 async function handle_client(cfg, log, client) {
@@ -601,26 +606,8 @@ async function handle_client(cfg, log, client) {
             vless.port,
             cfg.PROXY,
         )
-
-        const relays = {
-            ['pipe']: pipe_relay,
-            ['yield']: yield_relay,
-        }
-
-        const relay = relays[cfg.RELAY_SCHEDULER] || pipe_relay
-
-        function log_error(tag, err) {
-            if (!(err instanceof AbortError)) {
-                log.error(`${tag} error: ${err.message}`)
-            }
-        }
-
-        const { uploader, downloader } = relay(cfg, log, client, remote, vless)
-        uploader.catch((err) => log_error('upload', err))
-        downloader
-            .catch((err) => log_error('download', err))
-            .finally(() => uploader)
-            .finally(() => log.info(`connection closed`))
+        relay(cfg, log, client, remote, vless)
+        watch_abort_signal(log, client.signal, remote)
         return true
     } catch (err) {
         log.error(`handle client error: ${err.message}`)
@@ -859,15 +846,6 @@ async function main(request, env) {
     const cfg = load_settings(env, SETTINGS)
     const log = new Logger(cfg.LOG_LEVEL, cfg.TIME_ZONE)
 
-    try {
-        return await handle_request(cfg, log, request)
-    } catch (err) {
-        log.error(`unhandled error: ${err}`)
-    }
-    return BAD_REQUEST
-}
-
-async function handle_request(cfg, log, request) {
     const url = new URL(request.url)
     if (!cfg.UUID) {
         const text = example(url)
