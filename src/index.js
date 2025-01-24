@@ -298,7 +298,7 @@ function yield_relay(cfg, signal) {
             let c = 0
             while (c < yield_size) {
                 if (signal && signal.aborted) {
-                    throw new AbortError('receive abort signal')
+                    throw new DOMException('receive abort signal', 'AbortError')
                 }
                 const r = await reader.read()
                 if (r.value) {
@@ -330,7 +330,7 @@ function yield_relay(cfg, signal) {
         )
         p.finally(() => {
             reader.releaseLock()
-            writer.releaseLock()
+            writer.close()
         })
         return p
     }
@@ -385,13 +385,14 @@ async function connect_remote(log, hostname, port, cfg_proxy) {
 }
 
 async function parse_header(uuid_str, client) {
+    const reader = client.readable.getReader()
     try {
-        const reader = client.readable.getReader()
         const vless = await read_vless_header(reader, uuid_str)
-        reader.releaseLock()
         return vless
     } catch (err) {
         throw new Error(`read vless header error: ${err.message}`)
+    } finally {
+        reader.releaseLock()
     }
 }
 
@@ -553,11 +554,19 @@ function pipe_relay() {
     async function pump(src, dest, first_packet) {
         if (first_packet.length > 0) {
             const writer = dest.writable.getWriter()
-            await writer.write(first_packet)
-            writer.releaseLock()
+            try {
+                await writer.write(first_packet)
+            } finally {
+                writer.releaseLock()
+            }
         }
         const opt = src.signal ? { signal: src.signal } : null
-        await src.readable.pipeTo(dest.writable, opt)
+        try {
+            await src.readable.pipeTo(dest.writable, opt)
+        } catch (err) {
+            dest.writable.close()
+            throw err
+        }
     }
     return pump
 }
@@ -573,7 +582,7 @@ function create_pump(cfg, signal) {
 
 function relay(cfg, log, client, remote, vless) {
     function log_error(prefix, err) {
-        if (!(err instanceof AbortError)) {
+        if (err.name !== 'AbortError') {
             log.error(`${prefix} error: ${err.message}`)
         }
     }
@@ -585,12 +594,9 @@ function relay(cfg, log, client, remote, vless) {
         .finally(() => client.reading_done && client.reading_done())
 
     // pipeTo() will close writable
-    const downloader = pump(remote, client, vless.resp).catch((err) => {
-        log_error('download', err)
-        client.writable
-            .close()
-            .catch((cerr) => log.error(`close writer error: ${cerr.message}`))
-    })
+    const downloader = pump(remote, client, vless.resp).catch((err) =>
+        log_error('download', err),
+    )
 
     downloader
         .finally(() => uploader)
