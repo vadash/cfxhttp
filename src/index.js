@@ -144,7 +144,9 @@ function random_uuid() {
         Math.floor((1 + Math.random()) * 0x10000)
             .toString(16)
             .substring(1)
-    return `${s4() + s4()}-${s4()}-${s4()}-${s4()}-${s4() + s4() + s4()}`
+    const v4 = `4${s4().substring(0, 3)}`
+    const variant = `${"89ab"[random_num(0, 3)]}${s4().substring(0,3)}`
+    return `${s4() + s4()}-${s4()}-${v4}-${variant}-${s4() + s4() + s4()}`
 }
 
 function random_padding(range_str) {
@@ -919,5 +921,6 @@ export default {
     pick_random_proxy,
     random_id,
     random_padding,
+    random_uuid,
     validate_uuid,
 }

@@ -2,7 +2,7 @@
 name = "cfxhttp"
 main = "src/index.js"
 compatibility_date = "2024-11-11"
-compatibility_flags = []
+compatibility_flags = ["nodejs_compat"]
 
 # Workers Logs
 # Docs: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
