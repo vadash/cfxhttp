@@ -1,12 +1,12 @@
 import { expect, test } from 'vitest'
 import index from '../src/index.js'
 
-test('random_uuid', ()=>{
+test('random_uuid', () => {
     const s = '81c11ae9-28f3-4439-8812-d8dbf0904eae'
-    for (let i = 0; i < 10        ; i++) {
+    for (let i = 0; i < 10; i++) {
         const uuid = index.random_uuid()
         expect(uuid[14]).toBe('4')
-        expect("89ab".indexOf(uuid[19]) >= 0).toBeTruthy()
+        expect('89ab'.indexOf(uuid[19]) >= 0).toBeTruthy()
         expect(uuid.length).toBe(s.length)
     }
 })

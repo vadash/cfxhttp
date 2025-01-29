@@ -145,7 +145,7 @@ function random_uuid() {
             .toString(16)
             .substring(1)
     const v4 = `4${s4().substring(0, 3)}`
-    const variant = `${"89ab"[random_num(0, 3)]}${s4().substring(0,3)}`
+    const variant = `${'89ab'[random_num(0, 3)]}${s4().substring(0, 3)}`
     return `${s4() + s4()}-${s4()}-${v4}-${variant}-${s4() + s4() + s4()}`
 }
 
@@ -641,7 +641,7 @@ function create_config(ctype, url, uuid) {
     vless['address'] = host
     stream['tlsSettings']['serverName'] = host
 
-    const path = append_slash(url.pathname)
+    const path = url.pathname
     if (ctype === 'ws') {
         delete stream['tlsSettings']['alpn']
         stream['wsSettings'] = {
@@ -800,12 +800,11 @@ function get_ip_info(request) {
     return info
 }
 
-function handle_json(cfg, url, request) {
+function handle_json(cfg, url, request, path) {
     if (cfg.IP_QUERY_PATH && request.url.endsWith(cfg.IP_QUERY_PATH)) {
         return get_ip_info(request)
     }
 
-    const path = append_slash(url.pathname)
     if (url.searchParams.get('uuid') === cfg.UUID) {
         if (cfg.XHTTP_PATH && path.endsWith(cfg.XHTTP_PATH)) {
             return create_config('xhttp', url, cfg.UUID)
@@ -860,7 +859,7 @@ async function main(request, env) {
         return new Response(text)
     }
 
-    const path = url.pathname
+    const path = append_slash(url.pathname)
     const buff_size = (parseInt(cfg.BUFFER_SIZE) || 0) * 1024
 
     if (
@@ -893,12 +892,12 @@ async function main(request, env) {
         return ok ? client.resp : BAD_REQUEST
     }
 
-    if (cfg.DOH_QUERY_PATH && append_slash(path).endsWith(cfg.DOH_QUERY_PATH)) {
+    if (cfg.DOH_QUERY_PATH && path.endsWith(cfg.DOH_QUERY_PATH)) {
         return handle_doh(log, request, url, cfg.UPSTREAM_DOH)
     }
 
     if (request.method === 'GET' && !request.headers.get('Upgrade')) {
-        const o = handle_json(cfg, url, request)
+        const o = handle_json(cfg, url, request, path)
         if (o) {
             return new Response(JSON.stringify(o), {
                 headers: {
