@@ -178,3 +178,4 @@ dist
 # wrangler project
 
 .wrangler/
+/output/

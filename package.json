@@ -2,16 +2,10 @@
   "name": "cfxhttp",
   "version": "1.0.0",
   "author": "nobody",
-  "private": true,
-  "scripts": {
-    "deploy": "wrangler deploy",
-    "debug": "wrangler --log-level debug dev",
-    "dev": "wrangler dev",
-    "test": "vitest"
-  },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.41",
+    "js-confuser": "latest",
+    "uglify-js": "latest",
     "vitest": "2.0.5",
-    "wrangler": "^3.105.0"
+    "wrangler": "^3.107.2"
   }
 }
